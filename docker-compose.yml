@@ -1,0 +1,86 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8.0
+    container_name: wp-mysql
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - wp-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  wordpress:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wp-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: ${MYSQL_USER}
+      WORDPRESS_DB_PASSWORD: ${MYSQL_PASSWORD}
+      WORDPRESS_DB_NAME: ${MYSQL_DATABASE}
+    volumes:
+      - wp_data:/var/www/html
+    networks:
+      - wp-network
+      - npm_network
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: wp-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      - "8082:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+    networks:
+      - wp-network
+
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "81:81"
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - npm_network
+
+volumes:
+  db_data:
+  wp_data:
+  npm_data:
+  npm_letsencrypt:
+
+networks:
+  wp-network:
+    driver: bridge
+    name: wp-network
+  npm_network:
+    driver: bridge
+    name: npm_network
